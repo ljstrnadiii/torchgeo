@@ -78,6 +78,12 @@ dependencies = [
     "torchmetrics>=0.10",
     # torchvision 0.14+ required for torchvision.models.swin_v2_b
     "torchvision>=0.14",
+    # required for creating a vector tile index
+    "geopandas>=0.9",
+    # required for visualizing vector tile index
+    "folium",
+    "matplotlib",
+    "mapclassify"
 ]
 dynamic = ["version"]
 
