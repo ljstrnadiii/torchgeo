@@ -13,8 +13,11 @@ from datetime import datetime, timedelta
 import geopandas as gpd
 import numpy as np
 import rasterio
+from numpy.typing import NDArray
 from pyproj import CRS, Transformer
 from rasterio.transform import from_origin
+from rasterio.warp import Resampling, reproject
+from rasterio.windows import from_bounds
 from shapely import box
 from shapely.affinity import translate
 from shapely.geometry import Polygon
@@ -152,7 +155,7 @@ def build_raster_index(
 
 
 def jitter_geometries(
-    gdf: gpd.GeoDataFrame, max_offset: float = 0.0001
+    gdf: gpd.GeoDataFrame, max_offset: float = 0.001
 ) -> gpd.GeoDataFrame:
     """Helper to visualize points if tiles perfectly overlap.
 
@@ -176,3 +179,42 @@ def jitter_geometries(
     gdf = gdf.copy()
     gdf['geometry'] = jittered_geometries
     return gdf
+
+
+def extract_slice(
+    source_tif: str,
+    target_crs: CRS | str | int,
+    slice_bounds: tuple[float, float, float, float],
+    target_resolution: float,
+) -> NDArray[np.float32]:
+    """Super hacky, we actually want to use larger area for warping etc."""
+    with rasterio.open(source_tif) as src:
+        source_bounds = rasterio.warp.transform_bounds(
+            target_crs, src.crs, *slice_bounds
+        )
+
+        source_window = from_bounds(*source_bounds, transform=src.transform)
+        source_data = src.read(window=source_window)
+
+        left, bottom, right, top = slice_bounds
+        width = int((right - left) / target_resolution)
+        height = int((top - bottom) / target_resolution)
+        destination = np.zeros(
+            (len(source_data), height, width), dtype=src.meta['dtype']
+        )
+
+        destination_transform = rasterio.transform.from_origin(
+            left, top, target_resolution, target_resolution
+        )
+
+        reproject(
+            source=source_data,
+            destination=destination,
+            src_transform=src.window_transform(source_window),
+            src_crs=src.crs,
+            dst_transform=destination_transform,
+            dst_crs=target_crs,
+            resampling=Resampling.bilinear,
+        )
+
+    return destination.astype(np.float32)
